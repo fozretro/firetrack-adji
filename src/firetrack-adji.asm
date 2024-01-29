@@ -4,7 +4,8 @@ ORG &1900
 
 .start
 .exec
-      LDA #42
+      LDA #66
+      JSR &FFEE
       RTS
 .end
  
