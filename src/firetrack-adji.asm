@@ -1,13 +1,5 @@
 \ Configures the ADJI joystick handler for FireTrack (requires sideways RAM)
 
-; current behavior
-; left - goes left
-; right - does nothing
-; down - goes right
-; up - goes down
-; fire - goes up and right
-
-
 ORG &1900
 CPU 1
 
@@ -27,7 +19,7 @@ CPU 1
       INX                           ; next byte to copy
       CPX #0                        ; done?
       BNE loop                      ; loop back if not
-      JSR test
+      ;JSR test
       PLA                           ; pop current paged rom
       STA &FE30                     ; set current paged rom
       STA &F4                       ; set current paged rom
@@ -81,10 +73,8 @@ CPU 1
 
       ALIGN &100                    ; copied to &B200 by above
 .adjihandler
-      ;PHP                           ; store entry processor state
       PHX                           ; store entry X
       PHA                           ; push action index
-      ;SEI
       LDA &FE34                     ; read ACCCON
       PHA                           ; store current value on stack
       LDA #&20                      ; set bit 5
@@ -93,15 +83,13 @@ CPU 1
       PLX                           ; pull prior ACCCON value into X
       STX &FE34                     ; restore ACCCON back to its prior value
       PLX                           ; restore action index into X
-      AND masks,X                   ; mask joystick value according to action index
+      AND &B220,X                   ; mask joystick value according to action index
       BNE detected                  ; action detected?
       PLX                           ; restore entry X
-      ;PLP                           ; restore etnry processor state
       LDA #0                        ; no action detected
       RTS
 .detected  
       PLX                           ; restore entry X
-      ;PLP                           ; restore entry processor state
       LDA #&FF                      ; action detected
       RTS
 .masks
