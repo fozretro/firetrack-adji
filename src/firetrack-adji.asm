@@ -1,49 +1,77 @@
 \ Configures the ADJI joystick handler for FireTrack (requires sideways RAM)
-
 ORG &1900
 CPU 1
 
+; OS Routines and Locations
+OSWORD=&FFF1
+OSWRCH=&FFEE
+OSBYTE=&FFF4
+OSARGS=&FFDA
+KEYCODE=&EC
+ACCCON=&FE34
+PAGEDROM=&F4
+ROMSEL=&FE30
+
+; FireTrack
+FTSRAM=7 ; so long as this is empty (no ROM), it is what FireTrack will use on a Master
+FTSRAM_CONFIG_BASE=&B100 ; see https://www.level7.org.uk/miscellany/firetrack-disassembly.txt
+
+; ADJI
+ADJI_BASE=&FCC0
+
+; Various ADJI handler locations in SRAM
+adjihandler_sram_config=FTSRAM_CONFIG_BASE
+adjihandler_sram_code=FTSRAM_CONFIG_BASE+&100
+adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
+
 .start
 .exec
-      LDA &F4                       ; current paged rom
+      LDA PAGEDROM                  ; current paged rom
       PHA                           ; store on stack
-      LDA #7                        ; hard coded sram 7 for now - TODO repliace FireTrack selection code
-      STA &FE30                     ; set current paged rom
-      STA &F4                       ; set current paged rom
+      LDA #FTSRAM                   ; Firetrack SRAM 
+      STA ROMSEL                    ; set current paged rom
+      STA PAGEDROM                  ; set current paged rom
       LDX #0                        ; loop to copy config and code to sram
-.loop 
-      LDA config,X                  ; read config block
-      STA &B100,X                   ; write config block
-      LDA config+&100,X             ; read code block
-      STA &B200,X                   ; write code block
+.sram_copy_loop 
+      LDA adjihandler_config,X      ; read config block
+      STA adjihandler_sram_config,X ; write config block to SRAM
+      LDA adjihandler,X             ; read code block
+      STA adjihandler_sram_code,X   ; write code block to SRAM
+      LDA #0                        ; clear source location to ensure no false positives when testing SRAM copy in test mode
+      STA adjihandler_config,X      ; clear source location to ensure no false positives when testing SRAM copy in test mode
+      STA adjihandler,X             ; clear source location to ensure no false positives when testing SRAM copy in test mode
       INX                           ; next byte to copy
       CPX #0                        ; done?
-      BNE loop                      ; loop back if not
-      ;JSR test
+      BNE sram_copy_loop            ; loop back if not
+      JSR test                      ; development mode - uncomment to test without running FireTrack
       PLA                           ; pop current paged rom
-      STA &FE30                     ; set current paged rom
-      STA &F4                       ; set current paged rom
+      STA ROMSEL                    ; set current paged rom
+      STA PAGEDROM                  ; set current paged rom
       RTS
 
 .test
+      LDA #&13                      ; v-sync delay between sampling
+      JSR OSBYTE                    ; v-sync delay between sampling
       LDY #0                        ; action index
-      JSR &FFE0                     ; wait for a key
 .testButtons
       TYA                           ; action index goes in A
-      JSR &B200                     ; test the adji handler (from SRAM location)
-      BPL testNext                  ; test next 
-      LDA buttons,Y                 ; action ASCII char
-      JSR &FFEE                     ; print character in A
+      JSR adjihandler_sram_code     ; test the adji handler (from its SRAM location)
+      BPL testNext                  ; test next action
+      LDA actions,Y                 ; confirm action detected with applicable action ASCII char
+      JSR OSWRCH                    ; print character in A
 .testNext
-      INY
-      CPY #5
-      BNE testButtons
-      JMP test
-.buttons
+      INY                           ; increment next action to test
+      CPY #5                        ; done testing all actions?
+      BNE testButtons               ; test another action
+      LDA KEYCODE                   ; any key exits the test
+      BEQ test                      ; any key exits the test
+.endtest
+      RTS
+.actions
       EQUS "LRDUF"
 
       ALIGN &100                    ; copied to &B100 by above - configuration must reside at this address
-.config 
+.adjihandler_config 
       EQUS "** FireTrack ** by Orlando.(C) Aardvark Software 1987."     ; magic string at &B100 is required
       EQUB 0,0,0,0,0,0,0,0,0,0                                          ; not used 
 
@@ -71,19 +99,20 @@ CPU 1
       EQUB 3                        ; UP movement parameter value passed in A to .adjhandler
       EQUB 4                        ; FIRE movement parameter value passed in A to .adjhandler
 
-      ALIGN &100                    ; copied to &B200 by above
-.adjihandler
+      ALIGN &100                    ; be aware this is copied to &B200 by above, relocatable code only
+.adjihandler                        ; this code must respect inputs and outputs per "check_joystick" (see FireTrack disassemble link above)
       PHX                           ; store entry X
       PHA                           ; push action index
-      LDA &FE34                     ; read ACCCON
+      LDA ACCCON                    ; read ACCCON
       PHA                           ; store current value on stack
       LDA #&20                      ; set bit 5
-      TSB &FE34                     ; set bit 5 of ACCON
-      LDA &FCC0                     ; read joystick value
+      TSB ACCCON                    ; set bit 5 of ACCON
+.readADJI
+      LDA ADJI_BASE                 ; read joystick value (base address adjusted before copying to SRAM, see above)
       PLX                           ; pull prior ACCCON value into X
-      STX &FE34                     ; restore ACCCON back to its prior value
+      STX ACCCON                    ; restore ACCCON back to its prior value
       PLX                           ; restore action index into X
-      AND &B220,X                   ; mask joystick value according to action index
+      AND adjihandler_sram_masks,X  ; mask joystick value according to action index
       BNE detected                  ; action detected?
       PLX                           ; restore entry X
       LDA #0                        ; no action detected
