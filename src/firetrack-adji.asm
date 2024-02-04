@@ -50,10 +50,10 @@ CPU 1
       EQUB 255                      ; 255 donates the start of a config value, in this case KEYS
       EQUS "KEYS"                   ; magic string for alternative keys
       EQUB -97                      ; INKEY value for left key
-      EQUB -17                      ; INKEY value for left key
-      EQUB -87                      ; INKEY value for left key
-      EQUB -56                      ; INKEY value for left key
-      EQUB -72                      ; INKEY value for left key
+      EQUB -17                      ; INKEY value for right key
+      EQUB -87                      ; INKEY value for down key
+      EQUB -56                      ; INKEY value for up key
+      EQUB -72                      ; INKEY value for fire key
       EQUB 0                        ; not used
       EQUB 0                        ; not used
       EQUB 0                        ; not used
