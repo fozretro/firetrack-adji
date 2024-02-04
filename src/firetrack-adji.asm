@@ -1,6 +1,6 @@
-\ Configures the ADJI joystick handler for FireTrack (requires sideways RAM)
+; Configures an ADJI joystick handler for FireTrack in SRAM (thus only works with Enhanced version on Master)
 ORG &1900
-CPU 1
+CPU 1 ; 65C02 only aka Master
 
 ; OS Routines and Locations
 OSWORD=&FFF1
@@ -24,8 +24,14 @@ adjihandler_sram_config=FTSRAM_CONFIG_BASE
 adjihandler_sram_code=FTSRAM_CONFIG_BASE+&100
 adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
 
+; Vars
+testMode=&70 ; 1 byte
+adjiKey=&71  ; 1 byte
+cmdLine=&72  ; OSARGS output
+
 .start
 .exec
+      JSR init                      ; look for command line args and adjust ADJI base address in handler (before copying to SRAM)
       LDA PAGEDROM                  ; current paged rom
       PHA                           ; store on stack
       LDA #FTSRAM                   ; Firetrack SRAM 
@@ -43,38 +49,84 @@ adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
       INX                           ; next byte to copy
       CPX #0                        ; done?
       BNE sram_copy_loop            ; loop back if not
-      JSR test                      ; development mode - uncomment to test without running FireTrack
+.check_testMode
+      LDA testMode                  ; test mode enabled?
+      BEQ exit                      ; otherwise we are done
+      JSR adjihandler_test          ; test handler without running FireTrack
+.exit
       PLA                           ; pop current paged rom
       STA ROMSEL                    ; set current paged rom
       STA PAGEDROM                  ; set current paged rom
       RTS
 
-.test
+.init
+      LDA #0                        
+      STA testMode                  ; test modd off by default
+      STA adjiKey                   ; default to ADJI FCC0 
+      LDA #1                        ; obtain command line args 
+      LDX #cmdLine                  ; address for params buffer
+      LDY #0
+      JSR OSARGS
+      LDY #0                        ; parse command line args
+.init_arg_loop
+      LDA (cmdLine),Y               ; arg character
+      CMP #&0D                      ; end of args?
+      BEQ init_continue             ; done
+      LDX #4                        ; check if its one of the 5 allowed
+.init_parseOption
+      CMP init_validOptions,X       ; valid arg character?
+      BEQ init_validOption          ; process it
+      DEX                           ; keep checking for others
+      BNE init_parseOption          ; until all checked
+      JMP init_next_arg             ; checked all and nothing, try next char
+.init_validOption
+      CMP #'T'                      ; test mode special char
+      BNE init_validOption_isKey    ; if not its going to be one of the key numbers
+      LDA #255                      ; enable test mode
+      STA testMode                  ; store for later ref
+      JMP init_next_arg             ; keep looking for more params
+.init_validOption_isKey
+      SEC                           ; sec carry
+      SBC #'1'                      ; obtain key index via simple subsctraction from ascii base
+      STA adjiKey                   ; store for later ref
+.init_next_arg
+      INY
+      JMP init_arg_loop
+.init_continue
+      LDX adjiKey                   ; index into ADJI addressing table
+      LDA init_validOffets,X        ; read applicable offet address based on key given
+      STA adjihandler_read_adji+1   ; patch the handler read low byte
+      RTS
+.init_validOptions
+      EQUS "1234T"
+.init_validOffets
+      EQUB $C0,$D0,$E0,$F0
+
+.adjihandler_test
       LDA #&13                      ; v-sync delay between sampling
       JSR OSBYTE                    ; v-sync delay between sampling
       LDY #0                        ; action index
-.testButtons
+.adjihandler_test_buttons
       TYA                           ; action index goes in A
       JSR adjihandler_sram_code     ; test the adji handler (from its SRAM location)
-      BPL testNext                  ; test next action
-      LDA actions,Y                 ; confirm action detected with applicable action ASCII char
+      BPL adjiHandler_test_next     ; test next action
+      LDA adjihandler_test_act,Y    ; confirm action detected with applicable action ASCII char
       JSR OSWRCH                    ; print character in A
-.testNext
+.adjiHandler_test_next
       INY                           ; increment next action to test
       CPY #5                        ; done testing all actions?
-      BNE testButtons               ; test another action
+      BNE adjihandler_test_buttons  ; test another action
       LDA KEYCODE                   ; any key exits the test
-      BEQ test                      ; any key exits the test
-.endtest
+      BEQ adjihandler_test          ; any key exits the test
+.adjihandler_test_end
       RTS
-.actions
+.adjihandler_test_act
       EQUS "LRDUF"
 
       ALIGN &100                    ; copied to &B100 by above - configuration must reside at this address
 .adjihandler_config 
-      EQUS "** FireTrack ** by Orlando.(C) Aardvark Software 1987."     ; magic string at &B100 is required
-      EQUB 0,0,0,0,0,0,0,0,0,0                                          ; not used 
-
+      EQUS "** FireTrack ** by Orlando.(C) Aardvark Software 1987." ; magic string at &B100 is required
+      EQUB 0,0,0,0,0,0,0,0,0,0      ; not used 
       EQUB 255                      ; 255 donates the start of a config value, in this case KEYS
       EQUS "KEYS"                   ; magic string for alternative keys
       EQUB -97                      ; INKEY value for left key
@@ -88,7 +140,6 @@ adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
       EQUB 0                        ; not used
       EQUB 0                        ; not used
       EQUB 0                        ; not used
-
       EQUB 255                      ; 255 donates the start of a config value, in this case DEVICE
       EQUS "DEVICE"                 ; magic string for customer joystick handler
       EQUB &00                      ; LOW ADDR of &B200 aka entry point of the .adjihandler 
@@ -99,7 +150,7 @@ adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
       EQUB 3                        ; UP movement parameter value passed in A to .adjhandler
       EQUB 4                        ; FIRE movement parameter value passed in A to .adjhandler
 
-      ALIGN &100                    ; be aware this is copied to &B200 by above, relocatable code only
+      ALIGN &100                    ; be aware this is copied to &B200 and executed from this location, relocatable code only
 .adjihandler                        ; this code must respect inputs and outputs per "check_joystick" (see FireTrack disassemble link above)
       PHX                           ; store entry X
       PHA                           ; push action index
@@ -107,21 +158,21 @@ adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
       PHA                           ; store current value on stack
       LDA #&20                      ; set bit 5
       TSB ACCCON                    ; set bit 5 of ACCON
-.readADJI
-      LDA ADJI_BASE                 ; read joystick value (base address adjusted before copying to SRAM, see above)
+.adjihandler_read_adji              
+      LDA ADJI_BASE                 ; read joystick value (low byte base address adjusted before copying to SRAM, see init routine above)
       PLX                           ; pull prior ACCCON value into X
       STX ACCCON                    ; restore ACCCON back to its prior value
       PLX                           ; restore action index into X
       AND adjihandler_sram_masks,X  ; mask joystick value according to action index
-      BNE detected                  ; action detected?
+      BNE adjihandler_detected      ; action detected?
       PLX                           ; restore entry X
       LDA #0                        ; no action detected
       RTS
-.detected  
+.adjihandler_detected  
       PLX                           ; restore entry X
       LDA #&FF                      ; action detected
       RTS
-.masks
+.adjihandler_masks
       EQUB 4,8,2,1,16               ; bitmasks used by ADJI joystick value LEFT, RIGHT, DOWN, UP and FIRE
 .end
  
