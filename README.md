@@ -1,7 +1,7 @@
 FireTrack ADJI Support Utility
 ==============================
 
-Implements a custom joystick handler for FireTrack to support the ADJI interface.
+Implements a custom joystick handler for FireTrack to support the [ADJI interface](https://github.com/tom-seddon/ADJI).
 
 This only works on the BBC Master and requires the enhanced version of FireTrack that uses sideways ram.
 
