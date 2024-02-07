@@ -3,13 +3,13 @@ ORG &1900
 CPU 1 ; 65C02 only aka Master
 
 ; OS Routines and Locations
+KEYCODE=&EC
+PAGEDROM=&F4
 OSWORD=&FFF1
 OSWRCH=&FFEE
 OSBYTE=&FFF4
 OSARGS=&FFDA
-KEYCODE=&EC
 ACCCON=&FE34
-PAGEDROM=&F4
 ROMSEL=&FE30
 
 ; FireTrack
@@ -21,8 +21,7 @@ ADJI_BASE=&FCC0
 
 ; Various ADJI handler locations in SRAM
 adjihandler_sram_config=FTSRAM_CONFIG_BASE
-adjihandler_sram_code=FTSRAM_CONFIG_BASE+&100
-adjihandler_sram_masks=FTSRAM_CONFIG_BASE+&120
+adjihandler_sram=FTSRAM_CONFIG_BASE+&100
 
 ; Vars
 testMode=&70 ; 1 byte
@@ -42,7 +41,7 @@ cmdLine=&72  ; OSARGS output
       LDA adjihandler_config,X      ; read config block
       STA adjihandler_sram_config,X ; write config block to SRAM
       LDA adjihandler,X             ; read code block
-      STA adjihandler_sram_code,X   ; write code block to SRAM
+      STA adjihandler_sram,X        ; write code block to SRAM
       LDA #0                        ; clear source location to ensure no false positives when testing SRAM copy in test mode
       STA adjihandler_config,X      ; clear source location to ensure no false positives when testing SRAM copy in test mode
       STA adjihandler,X             ; clear source location to ensure no false positives when testing SRAM copy in test mode
@@ -64,7 +63,7 @@ cmdLine=&72  ; OSARGS output
       STA testMode                  ; test modd off by default
       STA adjiKey                   ; default to ADJI FCC0 
       LDA #1                        ; obtain command line args 
-      LDX #cmdLine                  ; address for params buffer
+      LDX #cmdLine                  ; address for params buffer address
       LDY #0
       JSR OSARGS
       LDY #0                        ; parse command line args
@@ -80,7 +79,7 @@ cmdLine=&72  ; OSARGS output
       BNE init_parseOption          ; until all checked
       JMP init_next_arg             ; checked all and nothing, try next char
 .init_validOption
-      CMP #'T'                      ; test mode special char
+      CMP #'T'                      ; test mode special char?
       BNE init_validOption_isKey    ; if not its going to be one of the key numbers
       LDA #255                      ; enable test mode
       STA testMode                  ; store for later ref
@@ -92,15 +91,17 @@ cmdLine=&72  ; OSARGS output
 .init_next_arg
       INY
       JMP init_arg_loop
-.init_continue
+.init_continue                      ; following makes some adjustments to the handler code before relocation to SRAM
       LDX adjiKey                   ; index into ADJI addressing table
       LDA init_validOffets,X        ; read applicable offet address based on key given
-      STA adjihandler_read_adji+1   ; patch the handler read low byte
+      STA adjihandler_read_adji+1   ; patch the handler read ADJI low byte
+      LDA #HI(adjihandler_sram)     ; high byte of sram code
+      STA adjihandler_read_masks+2  ; patch the handler read ADJI masks high byte
       RTS
 .init_validOptions
       EQUS "1234T"
 .init_validOffets
-      EQUB $C0,$D0,$E0,$F0
+      EQUB $C0,$D0,$E0,$F0          ; see ADJI repo README for dip switch settings that determine these
 
 .adjihandler_test
       LDA #&13                      ; v-sync delay between sampling
@@ -108,7 +109,7 @@ cmdLine=&72  ; OSARGS output
       LDY #0                        ; action index
 .adjihandler_test_buttons
       TYA                           ; action index goes in A
-      JSR adjihandler_sram_code     ; test the adji handler (from its SRAM location)
+      JSR adjihandler_sram          ; test the adji handler (from its SRAM location)
       BPL adjiHandler_test_next     ; test next action
       LDA adjihandler_test_act,Y    ; confirm action detected with applicable action ASCII char
       JSR OSWRCH                    ; print character in A
@@ -118,7 +119,6 @@ cmdLine=&72  ; OSARGS output
       BNE adjihandler_test_buttons  ; test another action
       LDA KEYCODE                   ; any key exits the test
       BEQ adjihandler_test          ; any key exits the test
-.adjihandler_test_end
       RTS
 .adjihandler_test_act
       EQUS "LRDUF"
@@ -142,8 +142,8 @@ cmdLine=&72  ; OSARGS output
       EQUB 0                        ; not used
       EQUB 255                      ; 255 donates the start of a config value, in this case DEVICE
       EQUS "DEVICE"                 ; magic string for customer joystick handler
-      EQUB &00                      ; LOW ADDR of &B200 aka entry point of the .adjihandler 
-      EQUB &B2                      ; HIGH ADDR of &B200 aka entry point of the .adjihandler 
+      EQUB LO(adjihandler_sram)     ; LOW ADDR of sram entry point for the .adjihandler 
+      EQUB HI(adjihandler_sram)     ; HIGH ADDR of sram entry point for the .adjihandler 
       EQUB 0                        ; LEFT movement parameter value passed in A to .adjhandler
       EQUB 1                        ; RIGHT movement parameter value passed in A to .adjhandler
       EQUB 2                        ; DOWN movement parameter value passed in A to .adjhandler
@@ -162,8 +162,9 @@ cmdLine=&72  ; OSARGS output
       LDA ADJI_BASE                 ; read joystick value (low byte base address adjusted before copying to SRAM, see init routine above)
       PLX                           ; pull prior ACCCON value into X
       STX ACCCON                    ; restore ACCCON back to its prior value
-      PLX                           ; restore action index into X
-      AND adjihandler_sram_masks,X  ; mask joystick value according to action index
+      PLX                           ; restore action index into
+.adjihandler_read_masks
+      AND adjihandler_masks, X      ; mask joystick value according to action index (absolute address patched in init routine before relocate)
       BNE adjihandler_detected      ; action detected?
       PLX                           ; restore entry X
       LDA #0                        ; no action detected

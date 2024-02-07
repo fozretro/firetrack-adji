@@ -5,6 +5,8 @@ Implements a custom joystick handler for FireTrack to support the ADJI interface
 
 This only works on the BBC Master and requires the enhanced version of FireTrack that uses sideways ram.
 
+You do not need to use any other ADJI ROM commands, this is a direct integration of the ADJI API
+
 Special thanks to this disassembly https://www.level7.org.uk/miscellany/firetrack-disassembly.txt.
 
 Usage
