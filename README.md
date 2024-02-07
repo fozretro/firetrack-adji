@@ -9,6 +9,8 @@ You do not need to use any other ADJI ROM commands, this is a direct integration
 
 Special thanks to this disassembly https://www.level7.org.uk/miscellany/firetrack-disassembly.txt.
 
+Download from the `/dist` in this repository for the latest.
+
 Usage
 -----
 
@@ -18,11 +20,11 @@ The following usage defaults to joystrick number 1 (aka &FCC0 address for ADJI)
 
 `*!FTADJI`
 
-The following usage sets to joystrick number 2 (so the code uses &FCD0 address for ADJI), same works for 3 and 4.
+The following usage sets to joystrick number 2 (so the code uses &FCD0 address), same works for 3 and 4.
 
 `*!FTADJI 2`
 
-The following runs the test routine that outputs characters as the stick is moved, press any key to exit, then boot the game
+The following runs the test routine that outputs characters as the stick is moved, press any key to exit.
 
 `*!FTADJI TEST`
 
